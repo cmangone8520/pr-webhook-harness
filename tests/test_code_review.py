@@ -149,6 +149,12 @@ async def test_agent_reads_files_and_posts_review(handler, event) -> None:
     assert posted["body"].startswith(HEADER)
     assert "`other.py:9`" in posted["body"]
     assert reviews.calls.last.request.headers["Authorization"] == "Bearer gh-token"
+    github_writes = [
+        (c.request.method, c.request.url.path)
+        for c in respx.calls
+        if c.request.url.host == "api.github.test" and c.request.method != "GET"
+    ]
+    assert github_writes == [("POST", "/repos/octo-org/octo-repo/pulls/42/reviews")]
 
 
 @respx.mock
@@ -162,6 +168,7 @@ async def test_falls_back_to_summary_when_inline_rejected(handler, event) -> Non
     await handler.handle(event)
 
     retry = json.loads(reviews.calls.last.request.content)
+    assert retry["event"] == "COMMENT"
     assert retry["comments"] == []
     assert "`app.py:3`" in retry["body"] and "`other.py:9`" in retry["body"]
 
