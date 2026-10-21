@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     review_max_turns: int = 8
     review_max_comments: int = 25
 
+    security_model: str = ""
+    security_timeout_seconds: float = 300.0
+    security_max_scan_files: int = 50
+    semgrep_enabled: bool = True
+    semgrep_bin: str = "semgrep"
+    semgrep_config: str = "p/default"
+    semgrep_timeout_seconds: float = 180.0
+
     max_webhook_bytes: int = 5_000_000
     webhook_replay_ttl_seconds: int = 600
     webhook_replay_cache_size: int = 10_000

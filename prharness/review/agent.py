@@ -1,4 +1,4 @@
-"""Tool-calling OpenAI agent that reviews a PR diff for code quality."""
+"""Tool-calling OpenAI agent that reviews a PR diff and submits structured findings."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ class ReviewComment:
     severity: str
     category: str
     body: str
+    cwe: str = ""
+    source: str = ""
 
 
 @dataclass(frozen=True)
@@ -33,7 +35,9 @@ class ReviewResult:
     comments: list[ReviewComment] = field(default_factory=list)
 
 
-class CodeQualityAgent:
+class ReviewAgent:
+    """Runs ``read_file``/``submit_*`` tool calls until the model submits its review."""
+
     def __init__(
         self,
         client: AsyncOpenAI,
@@ -42,9 +46,14 @@ class CodeQualityAgent:
         max_turns: int,
         max_file_reads: int,
         max_file_chars: int,
+        system_prompt: str = SYSTEM_PROMPT,
+        submit_tool: dict[str, Any] = SUBMIT_REVIEW_TOOL,
     ) -> None:
         self._client = client
         self._model = model
+        self._system_prompt = system_prompt
+        self._submit_tool = submit_tool
+        self._submit_name = submit_tool["function"]["name"]
         self._max_turns = max_turns
         self._max_file_reads = max_file_reads
         self._max_file_chars = max_file_chars
@@ -56,17 +65,21 @@ class CodeQualityAgent:
         read_file: FileReader,
         *,
         diff_truncated: bool = False,
+        context: str = "",
     ) -> ReviewResult:
+        user = _user_prompt(event, diff, diff_truncated)
+        if context:
+            user += f"\n\n{context}"
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": _user_prompt(event, diff, diff_truncated)},
+            {"role": "system", "content": self._system_prompt},
+            {"role": "user", "content": user},
         ]
         file_reads = 0
         for turn in range(self._max_turns):
             last_turn = turn == self._max_turns - 1
-            tools = [SUBMIT_REVIEW_TOOL] if last_turn else [READ_FILE_TOOL, SUBMIT_REVIEW_TOOL]
+            tools = [self._submit_tool] if last_turn else [READ_FILE_TOOL, self._submit_tool]
             tool_choice: Any = (
-                {"type": "function", "function": {"name": "submit_review"}}
+                {"type": "function", "function": {"name": self._submit_name}}
                 if last_turn
                 else "required"
             )
@@ -77,13 +90,13 @@ class CodeQualityAgent:
             calls = message.tool_calls or []
             messages.append(_assistant_message(message.content, calls))
             if not calls:
-                messages.append({"role": "user", "content": "Call submit_review now."})
+                messages.append({"role": "user", "content": f"Call {self._submit_name} now."})
                 continue
 
             for call in calls:
                 name = call.function.name
                 args = _parse_args(call.function.arguments)
-                if name == "submit_review":
+                if name == self._submit_name:
                     return _to_result(args)
                 if name == "read_file" and file_reads < self._max_file_reads:
                     file_reads += 1
@@ -102,6 +115,10 @@ class CodeQualityAgent:
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": output})
 
         raise RuntimeError("agent did not submit a review")
+
+
+class CodeQualityAgent(ReviewAgent):
+    """The code-quality reviewer: ``ReviewAgent`` with the default prompt and tool."""
 
 
 def _assistant_message(content: str | None, calls: list[Any]) -> dict[str, Any]:
@@ -151,6 +168,8 @@ def _to_result(args: dict[str, Any]) -> ReviewResult:
                     severity=str(item.get("severity", "low")),
                     category=str(item.get("category", "maintainability")),
                     body=str(item["body"]),
+                    cwe=str(item.get("cwe") or ""),
+                    source=str(item.get("source") or ""),
                 )
             )
         except (KeyError, TypeError, ValueError):
