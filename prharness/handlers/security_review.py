@@ -19,7 +19,7 @@ from ..review.scanners import (
     scanner_context,
 )
 from ..review.security_prompt import SECURITY_SYSTEM_PROMPT, SUBMIT_SECURITY_REVIEW_TOOL
-from .llm_review import LLMReviewHandler
+from .llm_review import LLMReviewHandler, ReviewScope
 
 log = logging.getLogger("prharness.handlers.security_review")
 
@@ -91,10 +91,8 @@ class SecurityReviewHandler(LLMReviewHandler):
             submit_tool=SUBMIT_SECURITY_REVIEW_TOOL,
         )
 
-    async def handle(self, event: PullRequestEvent) -> None:
-        diff = await self._fetch_diff(event)
-        if diff is None:
-            return
+    async def _review(self, event: PullRequestEvent, scope: ReviewScope) -> None:
+        diff = scope.diff
         added: dict[str, set[int]] = {}
         for path, line, _ in added_lines(diff):
             added.setdefault(path, set()).add(line)
@@ -114,9 +112,11 @@ class SecurityReviewHandler(LLMReviewHandler):
             shown,
             read_file,
             diff_truncated=truncated,
-            context=scanner_context(findings) if findings else "",
+            context="\n\n".join(
+                c for c in (scope.context(), scanner_context(findings) if findings else "") if c
+            ),
         )
-        await self._post(event, diff, attribute_sources(result, findings), self._model, notes)
+        await self._post(event, scope, attribute_sources(result, findings), self._model, notes)
 
     async def _run_semgrep(
         self, event: PullRequestEvent, added: dict[str, set[int]]

@@ -7,7 +7,7 @@ from ..events import PullRequestEvent
 from ..review.agent import CodeQualityAgent
 from ..review.diff import truncate_diff
 from ..review.github import GitHubClient
-from .llm_review import LLMReviewHandler
+from .llm_review import LLMReviewHandler, ReviewScope
 
 HEADER = "## AI code quality review"
 
@@ -34,14 +34,13 @@ class CodeReviewHandler(LLMReviewHandler):
             max_file_chars=settings.review_max_file_chars,
         )
 
-    async def handle(self, event: PullRequestEvent) -> None:
-        diff = await self._fetch_diff(event)
-        if diff is None:
-            return
-        shown, truncated = truncate_diff(diff, self.settings.review_max_diff_chars)
+    async def _review(self, event: PullRequestEvent, scope: ReviewScope) -> None:
+        shown, truncated = truncate_diff(scope.diff, self.settings.review_max_diff_chars)
 
         async def read_file(path: str) -> str | None:
             return await self._github.get_file(event.repo_full_name, path, event.head_sha)
 
-        result = await self._agent.review(event, shown, read_file, diff_truncated=truncated)
-        await self._post(event, diff, result, self.settings.openai_model)
+        result = await self._agent.review(
+            event, shown, read_file, diff_truncated=truncated, context=scope.context()
+        )
+        await self._post(event, scope, result, self.settings.openai_model)
