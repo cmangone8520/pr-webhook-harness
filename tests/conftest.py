@@ -26,7 +26,9 @@ class RecordingHandler(Handler):
 
 
 @pytest.fixture
-def settings() -> Settings:
+def settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
+    for name in Settings.model_fields:
+        monkeypatch.delenv(name.upper(), raising=False)
     return Settings(_env_file=None, github_webhook_secret=SECRET, handlers="log")
 
 

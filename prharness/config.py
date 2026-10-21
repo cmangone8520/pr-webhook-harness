@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     openai_timeout_seconds: float = 120.0
 
-    review_event: str = "COMMENT"
     review_max_diff_chars: int = 120_000
     review_max_file_chars: int = 40_000
     review_max_file_reads: int = 10

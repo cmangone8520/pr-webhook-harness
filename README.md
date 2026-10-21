@@ -71,7 +71,6 @@ All settings are environment variables (or `.env`):
 | `OPENAI_BASE_URL` | — | Optional OpenAI-compatible endpoint |
 | `GITHUB_TOKEN` | — | Required by `code_review` (Pull requests: write, Contents: read) |
 | `GITHUB_API_URL` | `https://api.github.com` | GitHub API base (for GHES) |
-| `REVIEW_EVENT` | `COMMENT` | Review type: `COMMENT`, `REQUEST_CHANGES` or `APPROVE` |
 | `REVIEW_MAX_DIFF_CHARS` | `120000` | Diff is truncated beyond this |
 | `REVIEW_MAX_FILE_READS` / `REVIEW_MAX_FILE_CHARS` | `10` / `40000` | Agent `read_file` budget |
 | `REVIEW_MAX_TURNS` | `8` | Max LLM round-trips; the last turn forces `submit_review` |
@@ -104,7 +103,7 @@ GITHUB_TOKEN=github_pat_...
 For each PR it:
 1. fetches the diff
 2. runs an OpenAI tool-calling agent (`prharness/review/agent.py`), which may call `read_file` to read full files at the PR head and finishes by calling `submit_review` with a summary and findings (`path`, `line`, `severity`, `category`, `body`)
-3. posts a single PR review
+3. posts a single PR review of type `COMMENT`. The agent is read-only apart from that review: it never pushes commits, edits files, approves or requests changes
 
 Findings on lines visible in the diff become inline comments, and the rest are listed in the review body. If GitHub rejects the inline comments, the review is re-posted as a summary only. The agent focuses on bugs, error handling, readability, maintainability, design, performance and tests. It treats PR content as untrusted data. Edit `prharness/review/prompt.py` to tune the review.
 

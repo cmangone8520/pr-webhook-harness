@@ -46,13 +46,13 @@ class GitHubClient:
         *,
         commit_id: str,
         body: str,
-        event: str,
         comments: list[dict[str, Any]],
     ) -> httpx.Response:
+        """Post a comment-only review; ``event`` is fixed so the PR's review state never changes."""
         return await self._client.post(
             f"{self._api}/repos/{repo}/pulls/{number}/reviews",
             headers={**self._headers, "Accept": "application/vnd.github+json"},
-            json={"commit_id": commit_id, "body": body, "event": event, "comments": comments},
+            json={"commit_id": commit_id, "body": body, "event": "COMMENT", "comments": comments},
         )
 
     async def aclose(self) -> None:

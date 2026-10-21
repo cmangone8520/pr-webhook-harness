@@ -20,6 +20,9 @@ HEADER = "## AI code quality review"
 class CodeReviewHandler(Handler):
     """Runs the OpenAI code-quality agent on a PR and posts the result as a PR review.
 
+    Read-only apart from that review: it never pushes commits or edits the PR, and the
+    review is always a plain ``COMMENT`` (it never approves or requests changes).
+
     Requires ``OPENAI_API_KEY`` and ``GITHUB_TOKEN`` (with pull request write access).
     """
 
@@ -84,7 +87,6 @@ class CodeReviewHandler(Handler):
             number,
             commit_id=event.head_sha,
             body=body,
-            event=self.settings.review_event,
             comments=comments,
         )
         if response.status_code == 422 and comments:
@@ -94,7 +96,6 @@ class CodeReviewHandler(Handler):
                 number,
                 commit_id=event.head_sha,
                 body=_review_body(result, inline + other, self.settings.openai_model),
-                event=self.settings.review_event,
                 comments=[],
             )
         response.raise_for_status()
