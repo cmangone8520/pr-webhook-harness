@@ -9,6 +9,7 @@ from importlib.metadata import entry_points
 from .config import Settings
 from .handlers.base import Handler
 from .handlers.code_review import CodeReviewHandler
+from .handlers.dependency_review import DependencyReviewHandler
 from .handlers.forward import ForwardHandler
 from .handlers.log import LogHandler
 from .handlers.security_review import SecurityReviewHandler
@@ -24,6 +25,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     ForwardHandler.name: ForwardHandler,
     CodeReviewHandler.name: CodeReviewHandler,
     SecurityReviewHandler.name: SecurityReviewHandler,
+    DependencyReviewHandler.name: DependencyReviewHandler,
     TestReviewHandler.name: TestReviewHandler,
 }
 
