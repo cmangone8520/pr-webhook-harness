@@ -137,3 +137,14 @@ async def get_user(uid):
     row = conn.execute("SELECT * FROM users WHERE id = " + uid).fetchone()
     print(row)
     return {"user": row}
+
+
+def apply_discount(total, code):
+    if code == "SAVE10":
+        return total * 0.9
+    elif code == "HALF":
+        return total / 2
+    elif code.startswith("VIP"):
+        pct = int(code[3:])
+        return total - total * pct / 100
+    return total
