@@ -29,7 +29,10 @@ SNAP_LINES = 5
 
 
 def attribute_sources(
-    result: ReviewResult, findings: list[ScanFinding], max_shift: int = SNAP_LINES
+    result: ReviewResult,
+    findings: list[ScanFinding],
+    max_shift: int = SNAP_LINES,
+    sources: tuple[str, ...] = ("semgrep", "secret-scan"),
 ) -> ReviewResult:
     """Pin each scanner-sourced comment to a matching scanner hit, or relabel it ``llm``.
 
@@ -43,7 +46,7 @@ def attribute_sources(
 
     comments = []
     for c in result.comments:
-        if c.source in ("semgrep", "secret-scan"):
+        if c.source in sources:
             lines = [
                 f.line for f in hits.get((c.source, c.path), []) if not f.cwe or f.cwe == c.cwe
             ]
