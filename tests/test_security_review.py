@@ -283,10 +283,12 @@ async def test_real_semgrep_scan(tmp_path: Path) -> None:
     ]
 
 
-def test_attribute_sources_relabels_unbacked_scanner_claims() -> None:
+def test_attribute_sources_pins_or_relabels_scanner_claims() -> None:
     findings = [
         ScanFinding("semgrep", "nan-injection", "app.py", 64, "medium", "nan", "CWE-704"),
         ScanFinding("semgrep", "sqli", "app.py", 22, "high", "sqli", "CWE-89"),
+        ScanFinding("semgrep", "open-redirect", "app.py", 76, "medium", "redir", "CWE-601"),
+        ScanFinding("semgrep", "no-cwe", "app.py", 90, "low", "x"),
         ScanFinding("secret-scan", "aws", "app.py", 15, "critical", "aws", "CWE-798"),
     ]
 
@@ -300,14 +302,26 @@ def test_attribute_sources_relabels_unbacked_scanner_claims() -> None:
                 c(64, "semgrep", "CWE-362"),  # same line, different vulnerability
                 c(22, "semgrep", "CWE-89"),
                 c(15, "secret-scan", "CWE-798"),
-                c(30, "semgrep", "CWE-78"),  # no scanner hit on this line
+                c(30, "semgrep", "CWE-78"),  # no scanner hit near this line
                 c(15, "semgrep", "CWE-798"),  # wrong scanner
                 c(50, "llm", "CWE-330"),
                 c(22, "semgrep", ""),  # no CWE claimed against a hit that has one
+                c(73, "semgrep", "CWE-601"),  # miscounted: snapped to 76
+                c(66, "semgrep", "CWE-601"),  # too far from 76
+                c(88, "semgrep", "CWE-1"),  # hit without CWE metadata backs by location
             ],
         ),
         findings,
     )
-    assert [x.source for x in result.comments] == [
-        "llm", "semgrep", "secret-scan", "llm", "llm", "llm", "llm",
+    assert [(x.line, x.source) for x in result.comments] == [
+        (64, "llm"),
+        (22, "semgrep"),
+        (15, "secret-scan"),
+        (30, "llm"),
+        (15, "llm"),
+        (50, "llm"),
+        (22, "llm"),
+        (76, "semgrep"),
+        (66, "llm"),
+        (90, "semgrep"),
     ]

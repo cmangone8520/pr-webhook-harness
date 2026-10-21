@@ -25,27 +25,35 @@ log = logging.getLogger("prharness.handlers.security_review")
 
 HEADER = "## AI security peer review"
 _FETCH_CONCURRENCY = 8
+SNAP_LINES = 5
 
 
-def attribute_sources(result: ReviewResult, findings: list[ScanFinding]) -> ReviewResult:
-    """Relabel a scanner-sourced comment as ``llm`` unless that scanner hit the same line with the
-    same CWE (or with no CWE metadata to compare)."""
-    hits: dict[tuple[str, str, int], set[str]] = {}
+def attribute_sources(
+    result: ReviewResult, findings: list[ScanFinding], max_shift: int = SNAP_LINES
+) -> ReviewResult:
+    """Pin each scanner-sourced comment to a matching scanner hit, or relabel it ``llm``.
+
+    A hit matches when it has the same source and path and the same CWE (hits without CWE
+    metadata can't be cross-checked, so location alone backs them). A comment on the hit's line
+    is kept; one within ``max_shift`` lines is moved onto the nearest hit, since models often
+    miscount line numbers. Anything else is the model's own finding."""
+    hits: dict[tuple[str, str], list[ScanFinding]] = {}
     for f in findings:
-        hits.setdefault((f.source, f.path, f.line), set()).add(f.cwe)
-
-    def backed(source: str, path: str, line: int, cwe: str) -> bool:
-        cwes = hits.get((source, path, line))
-        if cwes is None:
-            return False
-        # A hit without CWE metadata can't be cross-checked, so location alone backs it.
-        return "" in cwes or cwe in cwes
+        hits.setdefault((f.source, f.path), []).append(f)
 
     comments = []
     for c in result.comments:
-        if c.source in ("semgrep", "secret-scan") and not backed(c.source, c.path, c.line, c.cwe):
-            log.info("relabel source=%s->llm path=%s line=%d", c.source, c.path, c.line)
-            c = dataclasses.replace(c, source="llm")
+        if c.source in ("semgrep", "secret-scan"):
+            lines = [
+                f.line for f in hits.get((c.source, c.path), []) if not f.cwe or f.cwe == c.cwe
+            ]
+            nearest = min(lines, key=lambda n: abs(n - c.line), default=None)
+            if nearest is None or abs(nearest - c.line) > max_shift:
+                log.info("relabel source=%s->llm path=%s line=%d", c.source, c.path, c.line)
+                c = dataclasses.replace(c, source="llm")
+            elif nearest != c.line:
+                log.info("snap path=%s line=%d->%d", c.path, c.line, nearest)
+                c = dataclasses.replace(c, line=nearest)
         comments.append(c)
     return dataclasses.replace(result, comments=comments)
 
