@@ -1,20 +1,71 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import weakref
+from abc import abstractmethod
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from openai import AsyncOpenAI
 
 from ..config import Settings
 from ..events import PullRequestEvent
 from ..review.agent import ReviewComment, ReviewResult
-from ..review.diff import commentable_lines
+from ..review.diff import commentable_lines, filter_files
 from ..review.github import GitHubClient
 from .base import Handler
 
 log = logging.getLogger("prharness.handlers.llm_review")
 
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+_PREVIOUS_SNIPPET_CHARS = 200
+
+
+@dataclass(frozen=True)
+class PriorComment:
+    path: str
+    line: int
+    body: str
+
+
+@dataclass(frozen=True)
+class ReviewScope:
+    """What one run reviews: the whole PR, or only the commits since this handler's last review.
+
+    ``pr_diff`` is always the whole PR (GitHub only accepts inline comments on it); ``diff`` is
+    the part to review. ``previous`` holds this handler's earlier inline comments on the PR.
+    """
+
+    pr_diff: str
+    diff: str
+    base_sha: str | None = None
+    previous: tuple[PriorComment, ...] = ()
+
+    @property
+    def incremental(self) -> bool:
+        return self.base_sha is not None
+
+    def context(self) -> str:
+        parts = []
+        if self.base_sha:
+            parts.append(
+                "NOTE: this is a re-review after new commits were pushed. The diff shows only the "
+                f"changes since commit {self.base_sha[:12]}, which you already reviewed. Review "
+                "only these changes; use `read_file` for surrounding code."
+            )
+        if self.previous:
+            lines = [
+                f"- {c.path}:{c.line}: {' '.join(c.body.split())[:_PREVIOUS_SNIPPET_CHARS]}"
+                for c in self.previous
+            ]
+            parts.append(
+                "<previous_comments>\nYou already posted these comments on this PR. Do not repeat "
+                "them; report only issues they do not cover.\n"
+                + "\n".join(lines)
+                + "\n</previous_comments>"
+            )
+        return "\n\n".join(parts)
 
 
 class LLMReviewHandler(Handler):
@@ -53,28 +104,105 @@ class LLMReviewHandler(Handler):
             base_url=settings.openai_base_url or None,
             timeout=settings.openai_timeout_seconds,
         )
+        self._login: str | None = settings.github_reviewer_login.strip() or None
+        self._login_resolved = self._login is not None
+        self._locks: weakref.WeakValueDictionary[tuple[str, int], asyncio.Lock] = (
+            weakref.WeakValueDictionary()
+        )
 
-    async def _fetch_diff(self, event: PullRequestEvent) -> str | None:
-        diff = await self._github.get_diff(event.repo_full_name, event.number)
-        if not diff.strip():
-            log.info(
-                "%s skipped: empty diff pr=%s#%d", self.name, event.repo_full_name, event.number
-            )
+    async def handle(self, event: PullRequestEvent) -> None:
+        key = (event.repo_full_name, event.number)
+        lock = self._locks.get(key)
+        if lock is None:
+            lock = self._locks[key] = asyncio.Lock()
+        async with lock:  # serialize runs per PR so a quick second push sees the first review
+            scope = await self._scope(event)
+            if scope is not None:
+                await self._review(event, scope)
+
+    @abstractmethod
+    async def _review(self, event: PullRequestEvent, scope: ReviewScope) -> None: ...
+
+    async def _scope(self, event: PullRequestEvent) -> ReviewScope | None:
+        """Review the whole PR on open; afterwards only commits since this handler's last review.
+
+        Falls back to the whole PR when there is no earlier review, the token's login is
+        unknown, or history was rewritten (force-push/rebase) so the old commit isn't an ancestor.
+        """
+        repo, number = event.repo_full_name, event.number
+        pr_diff = await self._github.get_diff(repo, number)
+        if not pr_diff.strip():
+            log.info("%s skipped: empty diff pr=%s#%d", self.name, repo, number)
             return None
-        return diff
+        full = ReviewScope(pr_diff, pr_diff)
+        if event.action == "opened":
+            return full
+        login = await self._reviewer_login()
+        if login is None:
+            return full
+        mine = [
+            r
+            for r in await self._github.list_reviews(repo, number)
+            if (r.get("user") or {}).get("login") == login
+            and (r.get("body") or "").startswith(self.header)
+        ]
+        if not mine:
+            return full
+        last = mine[-1]["commit_id"]
+        if last == event.head_sha:
+            log.info("%s skipped: head already reviewed pr=%s#%d", self.name, repo, number)
+            return None
+        previous = await self._previous_comments(event, {r["id"] for r in mine})
+        compare = await self._github.get_compare(repo, last, event.head_sha)
+        if compare is None or compare.get("status") != "ahead":
+            log.info("%s full re-review (history rewritten) pr=%s#%d", self.name, repo, number)
+            return ReviewScope(pr_diff, pr_diff, previous=previous)
+        diff = await self._github.get_compare_diff(repo, last, event.head_sha)
+        diff = filter_files(diff, set(commentable_lines(pr_diff)))
+        if not diff.strip():
+            log.info("%s skipped: no new PR changes pr=%s#%d", self.name, repo, number)
+            return None
+        log.info("%s incremental review since=%s pr=%s#%d", self.name, last[:12], repo, number)
+        return ReviewScope(pr_diff, diff, base_sha=last, previous=previous)
+
+    async def _reviewer_login(self) -> str | None:
+        if not self._login_resolved:
+            self._login = await self._github.get_login()
+            self._login_resolved = True
+            if self._login is None:
+                log.warning(
+                    "%s: can't resolve the token's login; set GITHUB_REVIEWER_LOGIN to enable "
+                    "incremental re-reviews",
+                    self.name,
+                )
+        return self._login
+
+    async def _previous_comments(
+        self, event: PullRequestEvent, review_ids: set[int]
+    ) -> tuple[PriorComment, ...]:
+        comments = await self._github.list_review_comments(event.repo_full_name, event.number)
+        return tuple(
+            PriorComment(c["path"], c.get("line") or c.get("original_line") or 0, c["body"])
+            for c in comments
+            if c.get("pull_request_review_id") in review_ids
+        )
 
     async def _post(
         self,
         event: PullRequestEvent,
-        diff: str,
+        scope: ReviewScope,
         result: ReviewResult,
         model: str,
         notes: Sequence[str] = (),
     ) -> None:
         repo, number = event.repo_full_name, event.number
-        inline, other = _split_comments(
-            result, commentable_lines(diff), self.settings.review_max_comments
-        )
+        allowed = commentable_lines(scope.pr_diff)
+        if scope.incremental:
+            new = commentable_lines(scope.diff)
+            allowed = {p: lines & new.get(p, set()) for p, lines in allowed.items()}
+            notes = [f"Re-review of commits since `{scope.base_sha[:12]}`.", *notes]
+        result = _drop_repeats(result, scope.previous)
+        inline, other = _split_comments(result, allowed, self.settings.review_max_comments)
         comments = [
             {"path": c.path, "line": c.line, "side": "RIGHT", "body": _comment_body(c)}
             for c in inline
@@ -120,6 +248,13 @@ class LLMReviewHandler(Handler):
     async def aclose(self) -> None:
         await self._github.aclose()
         await self._openai.close()
+
+
+def _drop_repeats(result: ReviewResult, previous: Sequence[PriorComment]) -> ReviewResult:
+    """Drop findings already posted at the same location with the same severity/category label."""
+    seen = {(c.path, c.line, c.body.split("\n", 1)[0]) for c in previous}
+    kept = [c for c in result.comments if (c.path, c.line, _label(c)) not in seen]
+    return ReviewResult(summary=result.summary, comments=kept)
 
 
 def _split_comments(

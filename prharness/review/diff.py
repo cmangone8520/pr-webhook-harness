@@ -60,3 +60,9 @@ def added_lines(diff: str) -> list[tuple[str, int, str]]:
             elif raw.startswith(" ") or raw == "":
                 line += 1
     return result
+
+
+def filter_files(diff: str, paths: set[str]) -> str:
+    """Keep only the per-file sections of ``diff`` whose new path is in ``paths``."""
+    sections = re.split(r"(?m)^(?=diff --git )", diff)
+    return "".join(s for s in sections if s and set(commentable_lines(s)) & paths)

@@ -1,7 +1,8 @@
 # PR Webhook Harness
 
 A small FastAPI service that receives GitHub webhooks, verifies them, and dispatches
-`pull_request` events (by default only `opened`) to **pluggable handlers**.
+`pull_request` events (by default `opened`, `synchronize`, `reopened` and `ready_for_review`)
+to **pluggable handlers**.
 
 ```
 GitHub ──webhook──▶ POST /webhook
@@ -58,7 +59,7 @@ All settings are environment variables (or `.env`):
 | --- | --- | --- |
 | `GITHUB_WEBHOOK_SECRET` | — (required) | Webhook secret; startup fails if empty |
 | `HANDLERS` | `log` | Comma-separated handler specs; `a>b` runs `a` then `b` in sequence (see below) |
-| `PR_ACTIONS` | `opened` | Comma-separated `pull_request` actions to dispatch, `*` for all |
+| `PR_ACTIONS` | `opened,synchronize,reopened,ready_for_review` | Comma-separated `pull_request` actions to dispatch, `*` for all |
 | `IGNORE_DRAFTS` | `false` | Skip draft PRs |
 | `HANDLER_TIMEOUT_SECONDS` | `30` | Per-handler timeout (handlers may override, e.g. `security_review`) |
 | `FORWARD_URL` / `FORWARD_SECRET` | — | Used by the `forward` handler |
@@ -71,6 +72,7 @@ All settings are environment variables (or `.env`):
 | `OPENAI_BASE_URL` | — | Optional OpenAI-compatible endpoint |
 | `GITHUB_TOKEN` | — | Required by `code_review` and `security_review` (Pull requests: write, Contents: read) |
 | `GITHUB_API_URL` | `https://api.github.com` | GitHub API base (for GHES) |
+| `GITHUB_REVIEWER_LOGIN` | — (resolved via `GET /user`) | Login the reviews are posted as; set it for GitHub App tokens (e.g. `my-app[bot]`) to enable incremental re-reviews |
 | `REVIEW_MAX_DIFF_CHARS` | `120000` | Diff is truncated beyond this |
 | `REVIEW_MAX_FILE_READS` / `REVIEW_MAX_FILE_CHARS` | `10` / `40000` | Agent `read_file` budget |
 | `REVIEW_MAX_TURNS` | `8` | Max LLM round-trips; the last turn forces `submit_review` |
@@ -102,7 +104,7 @@ All settings are environment variables (or `.env`):
 ```bash
 # .env  (gitignored; never commit real keys)
 HANDLERS=log,code_review
-PR_ACTIONS=opened,reopened,ready_for_review
+PR_ACTIONS=opened,synchronize,reopened,ready_for_review
 IGNORE_DRAFTS=true
 OPENAI_API_KEY=sk-...
 GITHUB_TOKEN=github_pat_...
@@ -116,6 +118,25 @@ For each PR it:
 Findings on lines visible in the diff become inline comments, and the rest are listed in the review body. If GitHub rejects the inline comments, the review is re-posted as a summary only. The agent focuses on bugs, error handling, readability, maintainability, design, performance and tests. It treats PR content as untrusted data. Edit `prharness/review/prompt.py` to tune the review.
 
 Secrets are only read from the environment (or `.env`) and are held as pydantic `SecretStr`, so they don't show up in reprs or logs. In production, set them through your platform's secret store, for example `fly secrets set OPENAI_API_KEY=...` or `docker run -e OPENAI_API_KEY`.
+
+### Re-reviews on push
+
+On `opened` the AI reviewers review the whole PR. On later events (`synchronize`, `reopened`,
+`ready_for_review`) each reviewer finds its own last review on the PR and reviews only the
+commits since then (`compare/<last-reviewed>...<head>`, limited to files in the PR so merges
+from the base branch aren't reviewed):
+
+- its earlier inline comments are given to the model as "already reported", and an identical
+  finding at the same line is dropped before posting;
+- inline comments are only placed on lines changed by the new commits;
+- if the head was already reviewed (redelivery, `reopened` with no new commits) it does nothing;
+- after a force-push/rebase (the old commit is no longer an ancestor), or if it never reviewed
+  the PR, it reviews the whole PR again, still skipping its earlier comments;
+- runs for the same PR are serialized, so two quick pushes don't produce overlapping reviews.
+
+Own reviews are recognised by the review header and the token's login. With a GitHub App
+installation token, `GET /user` isn't available, so set `GITHUB_REVIEWER_LOGIN`; otherwise
+every event triggers a full review.
 
 ### AI security peer review (`security_review`)
 

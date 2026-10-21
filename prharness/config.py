@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     github_webhook_secret: str = ""
     handlers: str = "log"
-    pr_actions: str = "opened"
+    pr_actions: str = "opened,synchronize,reopened,ready_for_review"
     ignore_drafts: bool = False
     handler_timeout_seconds: float = 30.0
 
@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     github_token: SecretStr = SecretStr("")
     github_api_url: str = "https://api.github.com"
+    github_reviewer_login: str = ""
 
     openai_api_key: SecretStr = SecretStr("")
     openai_model: str = "gpt-5.5"
