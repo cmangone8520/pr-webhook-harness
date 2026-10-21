@@ -179,6 +179,25 @@ the manifest lines. OSV and the registries need no API key. Set `OSV_API_URL`, `
 `NPM_REGISTRY_URL` or `GO_PROXY_URL` to point at mirrors. `DEPENDENCY_MAX_PACKAGES` (default
 `100`) caps the packages checked per run, direct dependencies first.
 
+### AI CI/CD & infrastructure security review (`infra_review`)
+
+A security reviewer for GitHub Actions workflows and `action.yml`, Dockerfiles, compose files,
+Terraform/HCL and Kubernetes manifests (YAML containing `apiVersion` and `kind`). It runs only
+when a PR touches one of these. Two scanners check the lines the PR adds:
+
+- Semgrep with `INFRA_SEMGREP_CONFIG` (default
+  `p/github-actions,p/dockerfile,p/terraform,p/kubernetes`);
+- built-in checks, so there are still leads if Semgrep is missing:
+  - GitHub Actions: `pull_request_target`/`workflow_run` checking out PR code, `${{ github.event.* }}` script injection, actions not pinned to a SHA, `write-all` or write-scoped tokens on untrusted triggers, a missing `permissions:` block
+  - containers: root user, unpinned base image, secrets in `ENV`/`ARG`, `curl | sh`, `ADD <url>`
+  - Terraform: `0.0.0.0/0`, public ACLs or access, disabled encryption
+  - Kubernetes: privileged, host namespaces, privilege escalation, UID 0
+
+An OpenAI agent (`SECURITY_MODEL`) triages the hits, merges duplicates between the two scanners,
+and does its own pass, for example wildcard IAM, OIDC trust or `secrets: inherit`. It posts a
+separate comment-only review. A scanner tag is kept only if that scanner actually flagged the
+line, the same check `security_review` uses.
+
 ### Writing your own
 
 Subclass `prharness.Handler` and implement `handle` (either `async def` or a plain
