@@ -13,6 +13,7 @@ from .handlers.forward import ForwardHandler
 from .handlers.log import LogHandler
 from .handlers.security_review import SecurityReviewHandler
 from .handlers.sequence import SequentialHandler
+from .handlers.test_review import TestReviewHandler
 
 ENTRY_POINT_GROUP = "prharness.handlers"
 
@@ -23,6 +24,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     ForwardHandler.name: ForwardHandler,
     CodeReviewHandler.name: CodeReviewHandler,
     SecurityReviewHandler.name: SecurityReviewHandler,
+    TestReviewHandler.name: TestReviewHandler,
 }
 
 

@@ -159,6 +159,21 @@ It only reports security issues; code quality is left to `code_review`. Real DAS
 
 Semgrep is a CLI rather than a Python dependency, because its pins conflict with FastAPI's. Install it in its own environment, for example `pipx install semgrep` or `python -m venv ~/.semgrep && ~/.semgrep/bin/pip install semgrep`, then set `SEMGREP_BIN`. The Docker image includes it.
 
+### AI test coverage review (`test_review`)
+
+A static test reviewer. It never runs the PR's code: running untrusted code inside the harness
+would expose its API keys. For each changed source file it lists:
+
+- the functions the PR adds;
+- the functions it modifies, taken from the enclosing-function context in each diff hunk;
+- candidate tests: repository test files whose name mentions the module.
+
+An OpenAI agent (`OPENAI_MODEL`) reads those tests and comments on added or modified behavior that
+no test exercises: new functions, error paths, edge cases and bug fixes without a regression test.
+Each comment proposes a concrete test with its name, inputs and expected result. It also flags
+weak or flaky tests added in the PR. It posts a separate comment-only review and skips PRs that
+change no source code.
+
 ### Writing your own
 
 Subclass `prharness.Handler` and implement `handle` (either `async def` or a plain
