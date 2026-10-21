@@ -28,8 +28,8 @@ _FETCH_CONCURRENCY = 8
 
 
 def attribute_sources(result: ReviewResult, findings: list[ScanFinding]) -> ReviewResult:
-    """Relabel a scanner-sourced comment as ``llm`` unless that scanner hit the same line with a
-    matching CWE (when both sides name one)."""
+    """Relabel a scanner-sourced comment as ``llm`` unless that scanner hit the same line with the
+    same CWE (or with no CWE metadata to compare)."""
     hits: dict[tuple[str, str, int], set[str]] = {}
     for f in findings:
         hits.setdefault((f.source, f.path, f.line), set()).add(f.cwe)
@@ -38,7 +38,8 @@ def attribute_sources(result: ReviewResult, findings: list[ScanFinding]) -> Revi
         cwes = hits.get((source, path, line))
         if cwes is None:
             return False
-        return not cwe or "" in cwes or cwe in cwes
+        # A hit without CWE metadata can't be cross-checked, so location alone backs it.
+        return "" in cwes or cwe in cwes
 
     comments = []
     for c in result.comments:

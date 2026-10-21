@@ -303,10 +303,11 @@ def test_attribute_sources_relabels_unbacked_scanner_claims() -> None:
                 c(30, "semgrep", "CWE-78"),  # no scanner hit on this line
                 c(15, "semgrep", "CWE-798"),  # wrong scanner
                 c(50, "llm", "CWE-330"),
+                c(22, "semgrep", ""),  # no CWE claimed against a hit that has one
             ],
         ),
         findings,
     )
     assert [x.source for x in result.comments] == [
-        "llm", "semgrep", "secret-scan", "llm", "llm", "llm",
+        "llm", "semgrep", "secret-scan", "llm", "llm", "llm", "llm",
     ]
