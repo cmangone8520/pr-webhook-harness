@@ -159,6 +159,26 @@ It only reports security issues; code quality is left to `code_review`. Real DAS
 
 Semgrep is a CLI rather than a Python dependency, because its pins conflict with FastAPI's. Install it in its own environment, for example `pipx install semgrep` or `python -m venv ~/.semgrep && ~/.semgrep/bin/pip install semgrep`, then set `SEMGREP_BIN`. The Docker image includes it.
 
+### AI dependency review (`dependency_review`)
+
+A supply-chain reviewer that runs only on PRs that change a dependency manifest or lockfile
+(`requirements*.txt`, `pyproject.toml`, `package.json`, `package-lock.json`, `poetry.lock`,
+`uv.lock`, `go.mod`). It parses the file at base and head, and for each added or changed package:
+
+- queries [OSV.dev](https://osv.dev) for known advisories. Exact pins are checked as-is, ranges at
+  their lowest allowed version, unpinned packages at the latest release;
+- checks the public registry (PyPI, npm, Go proxy) for packages that don't exist
+  (typo/dependency confusion), packages first published < 90 days ago, npm install scripts,
+  deprecation, and copyleft licenses;
+- flags new names that are very close to a popular package (typosquats).
+
+An OpenAI agent (`SECURITY_MODEL`) triages these hits and does its own pass. It groups advisories
+per package with the fixed version to upgrade to, and also flags unpinned ranges, git/URL
+dependencies and extra package indexes. Findings are posted as a separate comment-only review on
+the manifest lines. OSV and the registries need no API key. Set `OSV_API_URL`, `PYPI_URL`,
+`NPM_REGISTRY_URL` or `GO_PROXY_URL` to point at mirrors. `DEPENDENCY_MAX_PACKAGES` (default
+`100`) caps the packages checked per run, direct dependencies first.
+
 ### AI test coverage review (`test_review`)
 
 A static test reviewer. It never runs the PR's code: running untrusted code inside the harness
