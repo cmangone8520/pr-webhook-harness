@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     semgrep_config: str = "p/default"
     semgrep_timeout_seconds: float = 180.0
 
+    dependency_max_packages: int = 100
+    osv_api_url: str = "https://api.osv.dev"
+    pypi_url: str = "https://pypi.org"
+    npm_registry_url: str = "https://registry.npmjs.org"
+    go_proxy_url: str = "https://proxy.golang.org"
+
     max_webhook_bytes: int = 5_000_000
     webhook_replay_ttl_seconds: int = 600
     webhook_replay_cache_size: int = 10_000

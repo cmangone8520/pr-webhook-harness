@@ -10,6 +10,7 @@ from .config import Settings
 from .handlers.base import Handler
 from .handlers.code_review import CodeReviewHandler
 from .handlers.compat_review import CompatReviewHandler
+from .handlers.dependency_review import DependencyReviewHandler
 from .handlers.forward import ForwardHandler
 from .handlers.hygiene_review import HygieneReviewHandler
 from .handlers.lead_review import LeadReviewHandler
@@ -28,6 +29,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     ForwardHandler.name: ForwardHandler,
     CodeReviewHandler.name: CodeReviewHandler,
     SecurityReviewHandler.name: SecurityReviewHandler,
+    DependencyReviewHandler.name: DependencyReviewHandler,
     TestReviewHandler.name: TestReviewHandler,
     CompatReviewHandler.name: CompatReviewHandler,
     HygieneReviewHandler.name: HygieneReviewHandler,
