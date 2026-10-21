@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     security_model: str = "gpt-5.5"
     security_timeout_seconds: float = 300.0
     security_max_scan_files: int = 50
+    hygiene_max_changed_lines: int = 500
+    hygiene_max_files: int = 25
     semgrep_enabled: bool = True
     semgrep_bin: str = "semgrep"
     semgrep_config: str = "p/default"
