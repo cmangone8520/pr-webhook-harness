@@ -245,6 +245,29 @@ Reviews the PR as a whole rather than the code. It checks:
 It posts one summary comment with at most 6 findings and no inline comments. It reviews each PR
 once and does not review individual pushes.
 
+### AI lead review (`lead_review`) and parallel groups
+
+`lead_review` runs after the specialists and posts one comment for the author and the approver.
+That comment gives:
+
+- the overall risk of merging as-is (critical/high/medium/low);
+- a numbered must-fix list;
+- a should-fix list.
+
+Duplicate findings across reviewers are merged, e.g. SQL injection reported by both code quality
+and security. It reads only the `## AI ...` reviews this bot posted on the current head commit
+and adds no new findings. It skips if there are none.
+
+Run the specialists in parallel and the lead reviewer after them with a parenthesised group:
+
+```env
+HANDLERS=log,(code_review,security_review,dependency_review,infra_review,test_review,compat_review,hygiene_review)>lead_review
+```
+
+Top-level entries run concurrently, `a>b` runs in sequence, and `(a,b)` is a parallel group.
+Groups can nest. Each handler keeps its own timeout, and a failure in one doesn't stop the
+others.
+
 ### Writing your own
 
 Subclass `prharness.Handler` and implement `handle` (either `async def` or a plain

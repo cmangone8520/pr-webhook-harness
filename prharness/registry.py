@@ -14,7 +14,9 @@ from .handlers.dependency_review import DependencyReviewHandler
 from .handlers.forward import ForwardHandler
 from .handlers.hygiene_review import HygieneReviewHandler
 from .handlers.infra_review import InfraReviewHandler
+from .handlers.lead_review import LeadReviewHandler
 from .handlers.log import LogHandler
+from .handlers.parallel import ParallelHandler
 from .handlers.security_review import SecurityReviewHandler
 from .handlers.sequence import SequentialHandler
 from .handlers.test_review import TestReviewHandler
@@ -33,6 +35,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     TestReviewHandler.name: TestReviewHandler,
     CompatReviewHandler.name: CompatReviewHandler,
     HygieneReviewHandler.name: HygieneReviewHandler,
+    LeadReviewHandler.name: LeadReviewHandler,
 }
 
 
@@ -77,13 +80,48 @@ def _build(spec: str, settings: Settings) -> Handler:
     return handler
 
 
-def build_handlers(settings: Settings) -> list[Handler]:
-    """Build handlers from ``HANDLERS``; ``a>b`` entries run in sequence."""
-    handlers: list[Handler] = []
-    for spec in settings.handler_specs:
-        steps = [s.strip() for s in spec.split(">") if s.strip()]
-        if len(steps) == 1:
-            handlers.append(_build(steps[0], settings))
+def split_top_level(text: str, sep: str) -> list[str]:
+    """Split on ``sep`` outside parentheses; raises on unbalanced parentheses."""
+    parts, depth, current = [], 0, []
+    for char in text:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                raise ValueError(f"unbalanced ')' in handler spec {text!r}")
+        if char == sep and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
         else:
-            handlers.append(SequentialHandler(settings, [_build(s, settings) for s in steps]))
-    return handlers
+            current.append(char)
+    if depth:
+        raise ValueError(f"unbalanced '(' in handler spec {text!r}")
+    parts.append("".join(current).strip())
+    return [p for p in parts if p]
+
+
+def _build_spec(spec: str, settings: Settings) -> Handler:
+    """``a>b`` runs in sequence; ``(a,b)`` runs in parallel; groups can nest."""
+    steps = split_top_level(spec, ">")
+    if len(steps) > 1:
+        return SequentialHandler(settings, [_build_spec(s, settings) for s in steps])
+    step = steps[0] if steps else ""
+    if step.startswith("(") and step.endswith(")"):
+        members = split_top_level(step[1:-1], ",")
+        if not members:
+            raise ValueError(f"empty handler group in {spec!r}")
+        children = [_build_spec(m, settings) for m in members]
+        return children[0] if len(children) == 1 else ParallelHandler(settings, children)
+    if not step or "(" in step or ")" in step:
+        raise ValueError(f"invalid handler spec {spec!r}")
+    return _build(step, settings)
+
+
+def build_handlers(settings: Settings) -> list[Handler]:
+    """Build handlers from ``HANDLERS``.
+
+    Top-level entries run concurrently, ``a>b`` runs in sequence and ``(a,b)`` is a parallel
+    group, e.g. ``log,(code_review,security_review)>lead_review``.
+    """
+    return [_build_spec(spec, settings) for spec in split_top_level(settings.handlers, ",")]
