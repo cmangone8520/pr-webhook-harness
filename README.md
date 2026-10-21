@@ -213,6 +213,24 @@ Each comment proposes a concrete test with its name, inputs and expected result.
 weak or flaky tests added in the PR. It posts a separate comment-only review and skips PRs that
 change no source code.
 
+### AI breaking-change review (`compat_review`)
+
+Flags changes that can break existing callers, clients, data or deployments. It runs when a PR
+touches source code, migrations or API schemas (OpenAPI/GraphQL/protobuf). Deterministic leads
+from the diff are given to an OpenAI agent (`OPENAI_MODEL`), which verifies them and looks for
+more:
+
+- removed public symbols and changed signatures;
+- removed or added endpoints (FastAPI/Flask/Express/Go routes);
+- risky migrations: drops, renames, type changes, `NOT NULL` without a default, non-concurrent
+  index builds;
+- lines removed from API schemas;
+- new environment variables, checked against `.env.example` and the README to find undocumented
+  ones, and removed environment variables.
+
+Each comment suggests a backward-compatible alternative, such as deprecating first, adding a
+default, or an expand/contract migration. It posts a separate comment-only review.
+
 ### Writing your own
 
 Subclass `prharness.Handler` and implement `handle` (either `async def` or a plain
