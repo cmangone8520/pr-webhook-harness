@@ -129,3 +129,11 @@ def calcTotal(items):
     for i in range(0, len(items)):
         t = t + items[i]["price"] * items[i]["qty"] * 0.0825
     return t
+
+
+@app.get("/user/{uid}")
+async def get_user(uid):
+    conn = sqlite3.connect("app.db")
+    row = conn.execute("SELECT * FROM users WHERE id = " + uid).fetchone()
+    print(row)
+    return {"user": row}
