@@ -13,6 +13,7 @@ from .handlers.compat_review import CompatReviewHandler
 from .handlers.dependency_review import DependencyReviewHandler
 from .handlers.forward import ForwardHandler
 from .handlers.hygiene_review import HygieneReviewHandler
+from .handlers.infra_review import InfraReviewHandler
 from .handlers.lead_review import LeadReviewHandler
 from .handlers.log import LogHandler
 from .handlers.parallel import ParallelHandler
@@ -30,6 +31,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     CodeReviewHandler.name: CodeReviewHandler,
     SecurityReviewHandler.name: SecurityReviewHandler,
     DependencyReviewHandler.name: DependencyReviewHandler,
+    InfraReviewHandler.name: InfraReviewHandler,
     TestReviewHandler.name: TestReviewHandler,
     CompatReviewHandler.name: CompatReviewHandler,
     HygieneReviewHandler.name: HygieneReviewHandler,

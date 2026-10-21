@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     semgrep_bin: str = "semgrep"
     semgrep_config: str = "p/default"
     semgrep_timeout_seconds: float = 180.0
+    infra_semgrep_config: str = "p/github-actions,p/dockerfile,p/terraform,p/kubernetes"
 
     dependency_max_packages: int = 100
     osv_api_url: str = "https://api.osv.dev"
