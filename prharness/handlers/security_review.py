@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 
 from openai import AsyncOpenAI
 
 from ..config import Settings
 from ..events import PullRequestEvent
-from ..review.agent import ReviewAgent
+from ..review.agent import ReviewAgent, ReviewResult
 from ..review.diff import added_lines, truncate_diff
 from ..review.github import GitHubClient
 from ..review.scanners import (
@@ -24,6 +25,28 @@ log = logging.getLogger("prharness.handlers.security_review")
 
 HEADER = "## AI security peer review"
 _FETCH_CONCURRENCY = 8
+
+
+def attribute_sources(result: ReviewResult, findings: list[ScanFinding]) -> ReviewResult:
+    """Relabel a scanner-sourced comment as ``llm`` unless that scanner hit the same line with a
+    matching CWE (when both sides name one)."""
+    hits: dict[tuple[str, str, int], set[str]] = {}
+    for f in findings:
+        hits.setdefault((f.source, f.path, f.line), set()).add(f.cwe)
+
+    def backed(source: str, path: str, line: int, cwe: str) -> bool:
+        cwes = hits.get((source, path, line))
+        if cwes is None:
+            return False
+        return not cwe or "" in cwes or cwe in cwes
+
+    comments = []
+    for c in result.comments:
+        if c.source in ("semgrep", "secret-scan") and not backed(c.source, c.path, c.line, c.cwe):
+            log.info("relabel source=%s->llm path=%s line=%d", c.source, c.path, c.line)
+            c = dataclasses.replace(c, source="llm")
+        comments.append(c)
+    return dataclasses.replace(result, comments=comments)
 
 
 class SecurityReviewHandler(LLMReviewHandler):
@@ -84,7 +107,7 @@ class SecurityReviewHandler(LLMReviewHandler):
             diff_truncated=truncated,
             context=scanner_context(findings) if findings else "",
         )
-        await self._post(event, diff, result, self._model, notes)
+        await self._post(event, diff, attribute_sources(result, findings), self._model, notes)
 
     async def _run_semgrep(
         self, event: PullRequestEvent, added: dict[str, set[int]]

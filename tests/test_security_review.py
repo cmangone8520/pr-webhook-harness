@@ -11,9 +11,10 @@ from openai import AsyncOpenAI
 from prharness import Handler, PullRequestEvent
 from prharness.config import Settings
 from prharness.dispatcher import Dispatcher
-from prharness.handlers.security_review import HEADER, SecurityReviewHandler
+from prharness.handlers.security_review import HEADER, SecurityReviewHandler, attribute_sources
 from prharness.handlers.sequence import SequentialHandler
 from prharness.registry import build_handlers
+from prharness.review.agent import ReviewComment, ReviewResult
 from prharness.review.diff import added_lines
 from prharness.review.github import GitHubClient
 from prharness.review.scanners import (
@@ -279,4 +280,33 @@ async def test_real_semgrep_scan(tmp_path: Path) -> None:
     findings = await scanner.scan({"pkg/cmd.py": CMD_PY, "../evil.py": CMD_PY})
     assert [(f.path, f.line, f.cwe, f.severity) for f in findings] == [
         ("pkg/cmd.py", 4, "CWE-78", "high")
+    ]
+
+
+def test_attribute_sources_relabels_unbacked_scanner_claims() -> None:
+    findings = [
+        ScanFinding("semgrep", "nan-injection", "app.py", 64, "medium", "nan", "CWE-704"),
+        ScanFinding("semgrep", "sqli", "app.py", 22, "high", "sqli", "CWE-89"),
+        ScanFinding("secret-scan", "aws", "app.py", 15, "critical", "aws", "CWE-798"),
+    ]
+
+    def c(line: int, source: str, cwe: str) -> ReviewComment:
+        return ReviewComment("app.py", line, "high", "x", "b", cwe=cwe, source=source)
+
+    result = attribute_sources(
+        ReviewResult(
+            "s",
+            [
+                c(64, "semgrep", "CWE-362"),  # same line, different vulnerability
+                c(22, "semgrep", "CWE-89"),
+                c(15, "secret-scan", "CWE-798"),
+                c(30, "semgrep", "CWE-78"),  # no scanner hit on this line
+                c(15, "semgrep", "CWE-798"),  # wrong scanner
+                c(50, "llm", "CWE-330"),
+            ],
+        ),
+        findings,
+    )
+    assert [x.source for x in result.comments] == [
+        "llm", "semgrep", "secret-scan", "llm", "llm", "llm",
     ]
