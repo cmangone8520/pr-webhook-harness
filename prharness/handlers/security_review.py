@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 
 from openai import AsyncOpenAI
 
 from ..config import Settings
 from ..events import PullRequestEvent
-from ..review.agent import ReviewAgent
+from ..review.agent import ReviewAgent, ReviewResult
 from ..review.diff import added_lines, truncate_diff
 from ..review.github import GitHubClient
 from ..review.scanners import (
@@ -24,6 +25,37 @@ log = logging.getLogger("prharness.handlers.security_review")
 
 HEADER = "## AI security peer review"
 _FETCH_CONCURRENCY = 8
+SNAP_LINES = 5
+
+
+def attribute_sources(
+    result: ReviewResult, findings: list[ScanFinding], max_shift: int = SNAP_LINES
+) -> ReviewResult:
+    """Pin each scanner-sourced comment to a matching scanner hit, or relabel it ``llm``.
+
+    A hit matches when it has the same source and path and the same CWE (hits without CWE
+    metadata can't be cross-checked, so location alone backs them). A comment on the hit's line
+    is kept; one within ``max_shift`` lines is moved onto the nearest hit, since models often
+    miscount line numbers. Anything else is the model's own finding."""
+    hits: dict[tuple[str, str], list[ScanFinding]] = {}
+    for f in findings:
+        hits.setdefault((f.source, f.path), []).append(f)
+
+    comments = []
+    for c in result.comments:
+        if c.source in ("semgrep", "secret-scan"):
+            lines = [
+                f.line for f in hits.get((c.source, c.path), []) if not f.cwe or f.cwe == c.cwe
+            ]
+            nearest = min(lines, key=lambda n: abs(n - c.line), default=None)
+            if nearest is None or abs(nearest - c.line) > max_shift:
+                log.info("relabel source=%s->llm path=%s line=%d", c.source, c.path, c.line)
+                c = dataclasses.replace(c, source="llm")
+            elif nearest != c.line:
+                log.info("snap path=%s line=%d->%d", c.path, c.line, nearest)
+                c = dataclasses.replace(c, line=nearest)
+        comments.append(c)
+    return dataclasses.replace(result, comments=comments)
 
 
 class SecurityReviewHandler(LLMReviewHandler):
@@ -84,7 +116,7 @@ class SecurityReviewHandler(LLMReviewHandler):
             diff_truncated=truncated,
             context=scanner_context(findings) if findings else "",
         )
-        await self._post(event, diff, result, self._model, notes)
+        await self._post(event, diff, attribute_sources(result, findings), self._model, notes)
 
     async def _run_semgrep(
         self, event: PullRequestEvent, added: dict[str, set[int]]

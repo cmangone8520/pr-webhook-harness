@@ -11,9 +11,10 @@ from openai import AsyncOpenAI
 from prharness import Handler, PullRequestEvent
 from prharness.config import Settings
 from prharness.dispatcher import Dispatcher
-from prharness.handlers.security_review import HEADER, SecurityReviewHandler
+from prharness.handlers.security_review import HEADER, SecurityReviewHandler, attribute_sources
 from prharness.handlers.sequence import SequentialHandler
 from prharness.registry import build_handlers
+from prharness.review.agent import ReviewComment, ReviewResult
 from prharness.review.diff import added_lines
 from prharness.review.github import GitHubClient
 from prharness.review.scanners import (
@@ -280,3 +281,82 @@ async def test_real_semgrep_scan(tmp_path: Path) -> None:
     assert [(f.path, f.line, f.cwe, f.severity) for f in findings] == [
         ("pkg/cmd.py", 4, "CWE-78", "high")
     ]
+
+
+def test_attribute_sources_pins_or_relabels_scanner_claims() -> None:
+    findings = [
+        ScanFinding("semgrep", "nan-injection", "app.py", 64, "medium", "nan", "CWE-704"),
+        ScanFinding("semgrep", "sqli", "app.py", 22, "high", "sqli", "CWE-89"),
+        ScanFinding("semgrep", "open-redirect", "app.py", 76, "medium", "redir", "CWE-601"),
+        ScanFinding("semgrep", "no-cwe", "app.py", 90, "low", "x"),
+        ScanFinding("secret-scan", "aws", "app.py", 15, "critical", "aws", "CWE-798"),
+    ]
+
+    def c(line: int, source: str, cwe: str) -> ReviewComment:
+        return ReviewComment("app.py", line, "high", "x", "b", cwe=cwe, source=source)
+
+    result = attribute_sources(
+        ReviewResult(
+            "s",
+            [
+                c(64, "semgrep", "CWE-362"),  # same line, different vulnerability
+                c(22, "semgrep", "CWE-89"),
+                c(15, "secret-scan", "CWE-798"),
+                c(30, "semgrep", "CWE-78"),  # no scanner hit near this line
+                c(15, "semgrep", "CWE-798"),  # wrong scanner
+                c(50, "llm", "CWE-330"),
+                c(22, "semgrep", ""),  # no CWE claimed against a hit that has one
+                c(73, "semgrep", "CWE-601"),  # miscounted: snapped to 76
+                c(66, "semgrep", "CWE-601"),  # too far from 76
+                c(88, "semgrep", "CWE-1"),  # hit without CWE metadata backs by location
+            ],
+        ),
+        findings,
+    )
+    assert [(x.line, x.source) for x in result.comments] == [
+        (64, "llm"),
+        (22, "semgrep"),
+        (15, "secret-scan"),
+        (30, "llm"),
+        (15, "llm"),
+        (50, "llm"),
+        (22, "llm"),
+        (76, "semgrep"),
+        (66, "llm"),
+        (90, "semgrep"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'STRIPE_KEY = "sk_live_" + "4eC39HqLyjWDarjtT1zdp7dc"',
+        'ADMIN_TOKEN = "ghp_" + "a" * 36',
+        'config = {"db_password": "hunter2hunter2"}',
+        "client_secret='0123456789abcdef'",
+        'self.api_key = b"c2VjcmV0LXZhbHVl"',
+    ],
+)
+def test_scan_secrets_flags_credential_assignments(line: str) -> None:
+    diff = f"diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -0,0 +1 @@\n+{line}\n"
+    [finding] = scan_secrets(diff)
+    assert finding.rule == "hardcoded-credential-assignment"
+    assert finding.cwe == "CWE-798" and finding.severity == "high"
+    assert "hunter2" not in finding.message and "sk_live" not in finding.message
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'api_key = os.environ["API_KEY"]',
+        'token = ""',
+        'SECRET = "change-me"',
+        'sort_key = "id"',
+        'if token == "expected-token-value":',
+        'password = "<your password>"',
+        'GITHUB_TOKEN = "${GITHUB_TOKEN}"',
+    ],
+)
+def test_scan_secrets_ignores_non_literals_and_placeholders(line: str) -> None:
+    diff = f"diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -0,0 +1 @@\n+{line}\n"
+    assert scan_secrets(diff) == []

@@ -53,24 +53,53 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+# A credential-named variable/key assigned a string literal, e.g. ``STRIPE_KEY = "sk_" + ...``.
+# Catches values a vendor regex can't see because they are split, encoded or custom.
+_CREDENTIAL_ASSIGNMENT = re.compile(
+    r"""(?ix)
+    \b\w*(?:key|secret|token|passw(?:or)?d|passwd|pwd|credentials?)\b  # credential-like name
+    ["']?\s*(?::|=(?!=))\s*                                            # = or : (not ==)
+    [rbuf]{0,2}(["'])(?P<value>[^"'\n]*)\1                            # string literal
+    (?P<concat>\s*\+)?                                                # ... + more
+    """
+)
+_PLACEHOLDER = re.compile(r"(?i)change[-_ ]?me|placeholder|your[-_ ]|^<.*>$|\$\{|\{\{|^x+$|^\*+$")
+
+
+def _is_credential_literal(text: str) -> bool:
+    for m in _CREDENTIAL_ASSIGNMENT.finditer(text):
+        value = m.group("value")
+        if _PLACEHOLDER.search(value):
+            continue
+        if len(value) >= 8 or (m.group("concat") and value):
+            return True
+    return False
+
+
 def scan_secrets(diff: str) -> list[ScanFinding]:
-    """Flag added lines matching a known credential format. Matched values are never echoed."""
+    """Flag added lines matching a known credential format, or assigning a string literal to a
+    credential-named variable. Matched values are never echoed."""
     findings = []
     for path, line, text in added_lines(diff):
-        for name, pattern in SECRET_PATTERNS:
-            if pattern.search(text):
-                findings.append(
-                    ScanFinding(
-                        source="secret-scan",
-                        rule=name,
-                        path=path,
-                        line=line,
-                        severity="critical",
-                        message=f"Added line matches the {name} credential format.",
-                        cwe="CWE-798",
-                    )
-                )
-                break
+        rule = next((name for name, pattern in SECRET_PATTERNS if pattern.search(text)), None)
+        if rule:
+            severity, message = "critical", f"Added line matches the {rule} credential format."
+        elif _is_credential_literal(text):
+            rule, severity = "hardcoded-credential-assignment", "high"
+            message = "Added line assigns a string literal to a credential-named variable."
+        else:
+            continue
+        findings.append(
+            ScanFinding(
+                source="secret-scan",
+                rule=rule,
+                path=path,
+                line=line,
+                severity=severity,
+                message=message,
+                cwe="CWE-798",
+            )
+        )
     return findings
 
 

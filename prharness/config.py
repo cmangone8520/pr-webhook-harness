@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     review_max_turns: int = 8
     review_max_comments: int = 25
 
-    security_model: str = ""
+    security_model: str = "gpt-5.5"
     security_timeout_seconds: float = 300.0
     security_max_scan_files: int = 50
     semgrep_enabled: bool = True

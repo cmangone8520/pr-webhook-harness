@@ -75,7 +75,7 @@ All settings are environment variables (or `.env`):
 | `REVIEW_MAX_FILE_READS` / `REVIEW_MAX_FILE_CHARS` | `10` / `40000` | Agent `read_file` budget |
 | `REVIEW_MAX_TURNS` | `8` | Max LLM round-trips; the last turn forces `submit_review` |
 | `REVIEW_MAX_COMMENTS` | `25` | Max findings posted (highest severity first) |
-| `SECURITY_MODEL` | `OPENAI_MODEL` | Model used by `security_review` |
+| `SECURITY_MODEL` | `gpt-5.5` | Model used by `security_review` (empty = `OPENAI_MODEL`) |
 | `SECURITY_TIMEOUT_SECONDS` | `300` | Timeout for `security_review` (scan + agent) |
 | `SECURITY_MAX_SCAN_FILES` | `50` | Max changed files fetched and scanned by Semgrep |
 | `SEMGREP_ENABLED` | `true` | Run Semgrep in `security_review` |
