@@ -10,6 +10,7 @@ from .config import Settings
 from .handlers.base import Handler
 from .handlers.code_review import CodeReviewHandler
 from .handlers.forward import ForwardHandler
+from .handlers.infra_review import InfraReviewHandler
 from .handlers.log import LogHandler
 from .handlers.security_review import SecurityReviewHandler
 from .handlers.sequence import SequentialHandler
@@ -23,6 +24,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     ForwardHandler.name: ForwardHandler,
     CodeReviewHandler.name: CodeReviewHandler,
     SecurityReviewHandler.name: SecurityReviewHandler,
+    InfraReviewHandler.name: InfraReviewHandler,
 }
 
 

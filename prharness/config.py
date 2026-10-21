@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     semgrep_bin: str = "semgrep"
     semgrep_config: str = "p/default"
     semgrep_timeout_seconds: float = 180.0
+    infra_semgrep_config: str = "p/github-actions,p/dockerfile,p/terraform,p/kubernetes"
 
     max_webhook_bytes: int = 5_000_000
     webhook_replay_ttl_seconds: int = 600
