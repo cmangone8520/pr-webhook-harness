@@ -1,0 +1,6 @@
+fastapi
+requests==2.19.0
+PyYAML>=5.1
+jinja2==2.10
+reqeusts==1.0.0
+lxml
