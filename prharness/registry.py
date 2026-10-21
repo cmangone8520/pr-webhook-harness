@@ -8,6 +8,7 @@ from importlib.metadata import entry_points
 
 from .config import Settings
 from .handlers.base import Handler
+from .handlers.code_review import CodeReviewHandler
 from .handlers.forward import ForwardHandler
 from .handlers.log import LogHandler
 
@@ -18,6 +19,7 @@ HandlerFactory = Callable[[Settings], Handler]
 _REGISTRY: dict[str, HandlerFactory] = {
     LogHandler.name: LogHandler,
     ForwardHandler.name: ForwardHandler,
+    CodeReviewHandler.name: CodeReviewHandler,
 }
 
 

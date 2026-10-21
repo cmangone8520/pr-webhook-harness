@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,7 +11,7 @@ def _split_csv(value: str) -> list[str]:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", validate_assignment=True)
 
     github_webhook_secret: str = ""
     handlers: str = "log"
@@ -21,6 +22,21 @@ class Settings(BaseSettings):
     forward_url: str = ""
     forward_secret: str = ""
     forward_timeout_seconds: float = 10.0
+
+    github_token: SecretStr = SecretStr("")
+    github_api_url: str = "https://api.github.com"
+
+    openai_api_key: SecretStr = SecretStr("")
+    openai_model: str = "gpt-5.4-mini"
+    openai_base_url: str | None = None
+    openai_timeout_seconds: float = 120.0
+
+    review_event: str = "COMMENT"
+    review_max_diff_chars: int = 120_000
+    review_max_file_chars: int = 40_000
+    review_max_file_reads: int = 10
+    review_max_turns: int = 8
+    review_max_comments: int = 25
 
     max_webhook_bytes: int = 5_000_000
     webhook_replay_ttl_seconds: int = 600
