@@ -11,6 +11,7 @@ from .handlers.base import Handler
 from .handlers.code_review import CodeReviewHandler
 from .handlers.compat_review import CompatReviewHandler
 from .handlers.forward import ForwardHandler
+from .handlers.hygiene_review import HygieneReviewHandler
 from .handlers.log import LogHandler
 from .handlers.security_review import SecurityReviewHandler
 from .handlers.sequence import SequentialHandler
@@ -27,6 +28,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     SecurityReviewHandler.name: SecurityReviewHandler,
     TestReviewHandler.name: TestReviewHandler,
     CompatReviewHandler.name: CompatReviewHandler,
+    HygieneReviewHandler.name: HygieneReviewHandler,
 }
 
 

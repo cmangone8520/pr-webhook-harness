@@ -86,6 +86,9 @@ class GitHubClient:
     async def list_review_comments(self, repo: str, number: int) -> list[dict[str, Any]]:
         return await self._paginate(f"{self._api}/repos/{repo}/pulls/{number}/comments")
 
+    async def list_commits(self, repo: str, number: int) -> list[dict[str, Any]]:
+        return await self._paginate(f"{self._api}/repos/{repo}/pulls/{number}/commits")
+
     async def _paginate(self, url: str, max_pages: int = 10) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         for page in range(1, max_pages + 1):

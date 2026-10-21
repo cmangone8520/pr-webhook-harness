@@ -192,6 +192,20 @@ more:
 Each comment suggests a backward-compatible alternative, such as deprecating first, adding a
 default, or an expand/contract migration. It posts a separate comment-only review.
 
+### AI PR hygiene review (`hygiene_review`)
+
+Reviews the PR as a whole rather than the code. It checks:
+
+- whether the description matches what the diff actually does;
+- whether unrelated changes are bundled together, and suggests a concrete split if so;
+- size: oversized means more than `HYGIENE_MAX_CHANGED_LINES` (default 500) changed lines,
+  excluding lockfiles and generated files, or more than `HYGIENE_MAX_FILES` (default 25) files;
+- missing linked issues on non-trivial changes;
+- WIP or fixup commits, and committed generated or binary files.
+
+It posts one summary comment with at most 6 findings and no inline comments. It reviews each PR
+once and does not review individual pushes.
+
 ### Writing your own
 
 Subclass `prharness.Handler` and implement `handle` (either `async def` or a plain
