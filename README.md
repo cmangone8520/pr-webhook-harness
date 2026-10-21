@@ -198,6 +198,21 @@ and does its own pass, for example wildcard IAM, OIDC trust or `secrets: inherit
 separate comment-only review. A scanner tag is kept only if that scanner actually flagged the
 line, the same check `security_review` uses.
 
+### AI test coverage review (`test_review`)
+
+A static test reviewer. It never runs the PR's code: running untrusted code inside the harness
+would expose its API keys. For each changed source file it lists:
+
+- the functions the PR adds;
+- the functions it modifies, taken from the enclosing-function context in each diff hunk;
+- candidate tests: repository test files whose name mentions the module.
+
+An OpenAI agent (`OPENAI_MODEL`) reads those tests and comments on added or modified behavior that
+no test exercises: new functions, error paths, edge cases and bug fixes without a regression test.
+Each comment proposes a concrete test with its name, inputs and expected result. It also flags
+weak or flaky tests added in the PR. It posts a separate comment-only review and skips PRs that
+change no source code.
+
 ### Writing your own
 
 Subclass `prharness.Handler` and implement `handle` (either `async def` or a plain

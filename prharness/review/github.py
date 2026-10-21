@@ -40,6 +40,16 @@ class GitHubClient:
         response.raise_for_status()
         return response.text
 
+    async def get_tree(self, repo: str, ref: str) -> list[str]:
+        """Paths of every file in the repository at ``ref``."""
+        response = await self._client.get(
+            f"{self._api}/repos/{repo}/git/trees/{quote(ref)}",
+            params={"recursive": "1"},
+            headers=self._headers,
+        )
+        response.raise_for_status()
+        return [e["path"] for e in response.json().get("tree", []) if e.get("type") == "blob"]
+
     async def get_compare(self, repo: str, base: str, head: str) -> dict[str, Any] | None:
         """Compare two commits; ``None`` if either is unknown (e.g. gone after a force-push)."""
         response = await self._client.get(

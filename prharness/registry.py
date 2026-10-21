@@ -15,6 +15,7 @@ from .handlers.infra_review import InfraReviewHandler
 from .handlers.log import LogHandler
 from .handlers.security_review import SecurityReviewHandler
 from .handlers.sequence import SequentialHandler
+from .handlers.test_review import TestReviewHandler
 
 ENTRY_POINT_GROUP = "prharness.handlers"
 
@@ -27,6 +28,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     SecurityReviewHandler.name: SecurityReviewHandler,
     DependencyReviewHandler.name: DependencyReviewHandler,
     InfraReviewHandler.name: InfraReviewHandler,
+    TestReviewHandler.name: TestReviewHandler,
 }
 
 
