@@ -11,6 +11,8 @@ from .handlers.base import Handler
 from .handlers.code_review import CodeReviewHandler
 from .handlers.forward import ForwardHandler
 from .handlers.log import LogHandler
+from .handlers.security_review import SecurityReviewHandler
+from .handlers.sequence import SequentialHandler
 
 ENTRY_POINT_GROUP = "prharness.handlers"
 
@@ -20,6 +22,7 @@ _REGISTRY: dict[str, HandlerFactory] = {
     LogHandler.name: LogHandler,
     ForwardHandler.name: ForwardHandler,
     CodeReviewHandler.name: CodeReviewHandler,
+    SecurityReviewHandler.name: SecurityReviewHandler,
 }
 
 
@@ -57,11 +60,20 @@ def resolve_factory(spec: str) -> HandlerFactory:
     )
 
 
+def _build(spec: str, settings: Settings) -> Handler:
+    handler = resolve_factory(spec)(settings)
+    if not isinstance(handler, Handler):
+        raise TypeError(f"handler {spec!r} did not produce a Handler instance")
+    return handler
+
+
 def build_handlers(settings: Settings) -> list[Handler]:
+    """Build handlers from ``HANDLERS``; ``a>b`` entries run in sequence."""
     handlers: list[Handler] = []
     for spec in settings.handler_specs:
-        handler = resolve_factory(spec)(settings)
-        if not isinstance(handler, Handler):
-            raise TypeError(f"handler {spec!r} did not produce a Handler instance")
-        handlers.append(handler)
+        steps = [s.strip() for s in spec.split(">") if s.strip()]
+        if len(steps) == 1:
+            handlers.append(_build(steps[0], settings))
+        else:
+            handlers.append(SequentialHandler(settings, [_build(s, settings) for s in steps]))
     return handlers

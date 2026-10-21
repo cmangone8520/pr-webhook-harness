@@ -37,3 +37,26 @@ def truncate_diff(diff: str, max_chars: int) -> tuple[str, bool]:
         return diff, False
     cut = diff.rfind("\n", 0, max_chars)
     return diff[: cut if cut > 0 else max_chars], True
+
+
+def added_lines(diff: str) -> list[tuple[str, int, str]]:
+    """Return ``(path, new_line, text)`` for every ``+`` line in the diff."""
+    result: list[tuple[str, int, str]] = []
+    path: str | None = None
+    line = 0
+    in_hunk = False
+    for raw in diff.splitlines():
+        if raw.startswith("diff --git "):
+            path, in_hunk = None, False
+        elif raw.startswith("+++ ") and not in_hunk:
+            target = raw[4:].strip()
+            path = target[2:] if target.startswith("b/") else None
+        elif (match := _HUNK.match(raw)) and path:
+            line, in_hunk = int(match.group(1)), True
+        elif in_hunk and path:
+            if raw.startswith("+"):
+                result.append((path, line, raw[1:]))
+                line += 1
+            elif raw.startswith(" ") or raw == "":
+                line += 1
+    return result

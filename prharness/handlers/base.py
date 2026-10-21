@@ -12,12 +12,14 @@ class Handler(ABC):
 
     Subclasses set ``name`` and implement ``handle`` (sync or async). Set
     ``actions`` to restrict a handler to a subset of the globally dispatched
-    actions. Handlers are constructed with the app ``Settings``; override
-    ``__init__`` to read handler-specific configuration from it.
+    actions, and ``timeout_seconds`` to override ``HANDLER_TIMEOUT_SECONDS``.
+    Handlers are constructed with the app ``Settings``; override ``__init__`` to
+    read handler-specific configuration from it.
     """
 
     name: str = ""
     actions: frozenset[str] | None = None
+    timeout_seconds: float | None = None
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings

@@ -57,24 +57,31 @@ All settings are environment variables (or `.env`):
 | Variable | Default | Description |
 | --- | --- | --- |
 | `GITHUB_WEBHOOK_SECRET` | — (required) | Webhook secret; startup fails if empty |
-| `HANDLERS` | `log` | Comma-separated handler specs (see below) |
+| `HANDLERS` | `log` | Comma-separated handler specs; `a>b` runs `a` then `b` in sequence (see below) |
 | `PR_ACTIONS` | `opened` | Comma-separated `pull_request` actions to dispatch, `*` for all |
 | `IGNORE_DRAFTS` | `false` | Skip draft PRs |
-| `HANDLER_TIMEOUT_SECONDS` | `30` | Per-handler timeout |
+| `HANDLER_TIMEOUT_SECONDS` | `30` | Per-handler timeout (handlers may override, e.g. `security_review`) |
 | `FORWARD_URL` / `FORWARD_SECRET` | — | Used by the `forward` handler |
 | `FORWARD_TIMEOUT_SECONDS` | `10` | HTTP timeout for `forward` |
 | `MAX_WEBHOOK_BYTES` | `5000000` | Max request body |
 | `WEBHOOK_REPLAY_TTL_SECONDS` | `600` | How long delivery ids are remembered |
 | `WEBHOOK_REPLAY_CACHE_SIZE` | `10000` | Max remembered delivery ids |
-| `OPENAI_API_KEY` | — | Required by `code_review` |
+| `OPENAI_API_KEY` | — | Required by `code_review` and `security_review` |
 | `OPENAI_MODEL` | `gpt-5.4-mini` | Model used by `code_review` |
 | `OPENAI_BASE_URL` | — | Optional OpenAI-compatible endpoint |
-| `GITHUB_TOKEN` | — | Required by `code_review` (Pull requests: write, Contents: read) |
+| `GITHUB_TOKEN` | — | Required by `code_review` and `security_review` (Pull requests: write, Contents: read) |
 | `GITHUB_API_URL` | `https://api.github.com` | GitHub API base (for GHES) |
 | `REVIEW_MAX_DIFF_CHARS` | `120000` | Diff is truncated beyond this |
 | `REVIEW_MAX_FILE_READS` / `REVIEW_MAX_FILE_CHARS` | `10` / `40000` | Agent `read_file` budget |
 | `REVIEW_MAX_TURNS` | `8` | Max LLM round-trips; the last turn forces `submit_review` |
 | `REVIEW_MAX_COMMENTS` | `25` | Max findings posted (highest severity first) |
+| `SECURITY_MODEL` | `OPENAI_MODEL` | Model used by `security_review` |
+| `SECURITY_TIMEOUT_SECONDS` | `300` | Timeout for `security_review` (scan + agent) |
+| `SECURITY_MAX_SCAN_FILES` | `50` | Max changed files fetched and scanned by Semgrep |
+| `SEMGREP_ENABLED` | `true` | Run Semgrep in `security_review` |
+| `SEMGREP_BIN` | `semgrep` | Semgrep executable |
+| `SEMGREP_CONFIG` | `p/default` | Comma-separated Semgrep configs (registry rulesets or local rule files) |
+| `SEMGREP_TIMEOUT_SECONDS` | `180` | Semgrep subprocess timeout |
 | `LOG_LEVEL` | `INFO` | Python log level |
 
 ## Handlers
@@ -88,6 +95,7 @@ All settings are environment variables (or `.env`):
   any other service, such as a CI trigger, a Slack relay or a serverless function.
 
 - **`code_review`**: an AI code-quality reviewer (see below).
+- **`security_review`**: an AI application-security peer reviewer backed by Semgrep and a secret scan (see below).
 
 ### AI code-quality review (`code_review`)
 
@@ -108,6 +116,27 @@ For each PR it:
 Findings on lines visible in the diff become inline comments, and the rest are listed in the review body. If GitHub rejects the inline comments, the review is re-posted as a summary only. The agent focuses on bugs, error handling, readability, maintainability, design, performance and tests. It treats PR content as untrusted data. Edit `prharness/review/prompt.py` to tune the review.
 
 Secrets are only read from the environment (or `.env`) and are held as pydantic `SecretStr`, so they don't show up in reprs or logs. In production, set them through your platform's secret store, for example `fly secrets set OPENAI_API_KEY=...` or `docker run -e OPENAI_API_KEY`.
+
+### AI security peer review (`security_review`)
+
+```bash
+HANDLERS=log,code_review>security_review   # security runs after code quality finishes
+```
+
+`a>b` runs handlers in sequence. Each one keeps its own timeout, and `b` still runs if `a` fails.
+
+For each PR it:
+1. fetches the diff and runs a secret scan over the added lines (AWS, GitHub, OpenAI, Stripe, Slack and Google key formats, plus private-key blocks). Matched values are never echoed.
+2. fetches the changed files at the PR head and runs [Semgrep](https://semgrep.dev) (`SEMGREP_CONFIG`, default `p/default`) on them in a temporary directory, with `--metrics=off`. Rules are downloaded from the registry, but code is scanned locally. Only hits on added lines are kept.
+3. gives the diff and the scanner hits to an OpenAI agent (`prharness/review/security_prompt.py`). The agent triages each hit, drops false positives, and adds its own findings across three groups:
+   - SAST classes (OWASP Top 10 / CWE Top 25)
+   - runtime issues a DAST scan would find that are visible in code (authn/authz, IDOR, CSRF, CORS, cookies/headers, open redirects, rate limiting)
+   - issues static tools usually miss (business logic, race conditions, multi-step chains, OWASP LLM Top 10)
+4. posts a separate comment-only review. Each finding has a severity (`critical`..`low`), category, CWE, `source` (`semgrep`, `secret-scan` or `llm`), the attack scenario and a fix. The review body reports what each scanner found.
+
+It only reports security issues; code quality is left to `code_review`. Real DAST needs a running deployment, so it can't run against a PR, and runtime issues are only checked at the code level. If Semgrep isn't installed or fails, the review says so and continues with the LLM review only.
+
+Semgrep is a CLI rather than a Python dependency, because its pins conflict with FastAPI's. Install it in its own environment, for example `pipx install semgrep` or `python -m venv ~/.semgrep && ~/.semgrep/bin/pip install semgrep`, then set `SEMGREP_BIN`. The Docker image includes it.
 
 ### Writing your own
 
