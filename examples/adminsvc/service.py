@@ -113,3 +113,19 @@ async def report(request: Request):
     os.system("generate_report --name " + name + " > /tmp/" + name + ".txt")
     h = hashlib.sha1(name.encode()).hexdigest()
     return Response(open("/tmp/" + name + ".txt").read(), headers={"X-Report-Id": h})
+
+
+@app.get("/download")
+async def download(request: Request):
+    f = request.query_params.get("file")
+    data = open("/srv/files/" + f, "rb").read()
+    return Response(data)
+
+
+def calcTotal(items):
+    t = 0
+    for i in range(0, len(items)):
+        t = t + items[i]["price"] * items[i]["qty"]
+    for i in range(0, len(items)):
+        t = t + items[i]["price"] * items[i]["qty"] * 0.0825
+    return t
