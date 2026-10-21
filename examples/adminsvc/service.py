@@ -122,7 +122,7 @@ async def download(request: Request):
     return Response(data)
 
 
-def calcTotal(items):
+def calcTotal(items, tax_rate):
     t = 0
     for i in range(0, len(items)):
         t = t + items[i]["price"] * items[i]["qty"]
@@ -131,7 +131,7 @@ def calcTotal(items):
     return t
 
 
-@app.get("/user/{uid}")
+@app.get("/v2/users/{uid}")
 async def get_user(uid):
     conn = sqlite3.connect("app.db")
     row = conn.execute("SELECT * FROM users WHERE id = " + uid).fetchone()
@@ -139,7 +139,9 @@ async def get_user(uid):
     return {"user": row}
 
 
-def apply_discount(total, code):
+def apply_discount(total, code, currency):
+    rate = float(os.environ["FX_RATE_" + currency])
+    total = total * rate
     if code == "SAVE10":
         return total * 0.9
     elif code == "HALF":
