@@ -325,3 +325,38 @@ def test_attribute_sources_pins_or_relabels_scanner_claims() -> None:
         (66, "llm"),
         (90, "semgrep"),
     ]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'STRIPE_KEY = "sk_live_" + "4eC39HqLyjWDarjtT1zdp7dc"',
+        'ADMIN_TOKEN = "ghp_" + "a" * 36',
+        'config = {"db_password": "hunter2hunter2"}',
+        "client_secret='0123456789abcdef'",
+        'self.api_key = b"c2VjcmV0LXZhbHVl"',
+    ],
+)
+def test_scan_secrets_flags_credential_assignments(line: str) -> None:
+    diff = f"diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -0,0 +1 @@\n+{line}\n"
+    [finding] = scan_secrets(diff)
+    assert finding.rule == "hardcoded-credential-assignment"
+    assert finding.cwe == "CWE-798" and finding.severity == "high"
+    assert "hunter2" not in finding.message and "sk_live" not in finding.message
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'api_key = os.environ["API_KEY"]',
+        'token = ""',
+        'SECRET = "change-me"',
+        'sort_key = "id"',
+        'if token == "expected-token-value":',
+        'password = "<your password>"',
+        'GITHUB_TOKEN = "${GITHUB_TOKEN}"',
+    ],
+)
+def test_scan_secrets_ignores_non_literals_and_placeholders(line: str) -> None:
+    diff = f"diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -0,0 +1 @@\n+{line}\n"
+    assert scan_secrets(diff) == []
