@@ -12,6 +12,7 @@ app = Flask(__name__)
 app.config["DEBUG"] = True
 STRIPE_KEY = "sk_live_" + "4eC39HqLyjWDarjtT1zdp7dc"
 ADMIN_TOKEN = "ghp_" + "a" * 36
+AWS_ACCESS_KEY_ID = "AKIAIOSFODNN7EXAMPLE"
 DB = "app.db"
 
 
