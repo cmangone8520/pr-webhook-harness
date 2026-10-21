@@ -67,7 +67,7 @@ All settings are environment variables (or `.env`):
 | `WEBHOOK_REPLAY_TTL_SECONDS` | `600` | How long delivery ids are remembered |
 | `WEBHOOK_REPLAY_CACHE_SIZE` | `10000` | Max remembered delivery ids |
 | `OPENAI_API_KEY` | — | Required by `code_review` and `security_review` |
-| `OPENAI_MODEL` | `gpt-5.4-mini` | Model used by `code_review` |
+| `OPENAI_MODEL` | `gpt-5.5` | Model used by `code_review` |
 | `OPENAI_BASE_URL` | — | Optional OpenAI-compatible endpoint |
 | `GITHUB_TOKEN` | — | Required by `code_review` and `security_review` (Pull requests: write, Contents: read) |
 | `GITHUB_API_URL` | `https://api.github.com` | GitHub API base (for GHES) |

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     github_api_url: str = "https://api.github.com"
 
     openai_api_key: SecretStr = SecretStr("")
-    openai_model: str = "gpt-5.4-mini"
+    openai_model: str = "gpt-5.5"
     openai_base_url: str | None = None
     openai_timeout_seconds: float = 120.0
 
