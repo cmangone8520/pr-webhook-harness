@@ -304,6 +304,36 @@ Each entry in `HANDLERS` is resolved, in order, as:
 See [`examples/comment_handler.py`](examples/comment_handler.py) for a handler that
 comments on each new PR through the GitHub API.
 
+## Measuring reviewer precision
+
+`scripts/precision_report.py` reads the review threads on a repo's PRs and reports, per
+agent, what happened to each inline comment it posted:
+
+```bash
+python scripts/precision_report.py owner/repo                 # 50 most recently updated PRs
+python scripts/precision_report.py owner/repo --state merged --since 2026-10-01 --by severity
+python scripts/precision_report.py owner/repo --pr 42 --json  # one record per comment
+```
+
+| Outcome | Meaning |
+|---|---|
+| `dismissed` | a 👎 reaction, or a reply such as "false positive", "won't fix" or "not an issue" |
+| `fixed` | GitHub marked the thread outdated because the commented line changed afterwards |
+| `resolved` | the thread was resolved without that line changing |
+| `acknowledged` | a 👍 reaction, or a reply such as "fixed", "done" or "good catch" |
+| `ignored` | the PR was merged or closed with none of the above |
+| `open` | the PR is still open with none of the above |
+
+Signals are checked top to bottom, so a dismissal wins over a later code change.
+**Precision** is (fixed + resolved + acknowledged) / (those + dismissed); **strict** also
+counts ignored comments as misses. The report ends with links to dismissed comments, which
+are the ones to read when tuning an agent's prompt. To dismiss a finding, react 👎 or reply
+with a reason; just resolving a thread counts as accepted.
+
+It uses `GITHUB_TOKEN` (GraphQL, read access to pull requests) and only counts reviews by
+`GITHUB_REVIEWER_LOGIN` when that's set. Summary-only reviews (`hygiene_review`,
+`lead_review` and findings placed in a review body) have no threads and aren't scored.
+
 ## Development
 
 ```bash

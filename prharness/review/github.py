@@ -89,6 +89,19 @@ class GitHubClient:
     async def list_commits(self, repo: str, number: int) -> list[dict[str, Any]]:
         return await self._paginate(f"{self._api}/repos/{repo}/pulls/{number}/commits")
 
+    async def graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        """Run a GraphQL query; raises on HTTP or GraphQL errors."""
+        response = await self._client.post(
+            graphql_url(self._api),
+            json={"query": query, "variables": variables},
+            headers=self._headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("errors"):
+            raise RuntimeError(f"GraphQL error: {payload['errors'][0].get('message')}")
+        return payload["data"]
+
     async def _paginate(self, url: str, max_pages: int = 10) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         for page in range(1, max_pages + 1):
@@ -122,3 +135,9 @@ class GitHubClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+def graphql_url(api_url: str) -> str:
+    """GraphQL endpoint for a REST API root (``/api/v3`` on GitHub Enterprise Server)."""
+    api = api_url.rstrip("/")
+    return api.removesuffix("/v3") + "/graphql" if api.endswith("/api/v3") else api + "/graphql"
