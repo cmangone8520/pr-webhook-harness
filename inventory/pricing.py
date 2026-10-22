@@ -18,7 +18,7 @@ def total(items, discounts=[]):
 
 
 def avg_price(items):
-    return sum(i["price"] for i in items) / len(items)
+    return sum(i["price"] for i in items) / len(items) if items else 0.0
 
 
 def apply_coupon(t, code):

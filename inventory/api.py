@@ -20,7 +20,7 @@ def db():
 def list_items():
     category = request.args.get("category", "")
     conn = db()
-    rows = conn.execute("SELECT id, name, qty, price FROM items WHERE category = '" + category + "'").fetchall()
+    rows = conn.execute("SELECT id, name, qty, price FROM items WHERE category = ?", (category,)).fetchall()
     return jsonify(rows)
 
 
@@ -41,7 +41,7 @@ def export():
 @app.route("/backup", methods=["POST"])
 def backup():
     target = request.json["target"]
-    subprocess.call("tar czf " + target + " /srv/data", shell=True)
+    subprocess.call(["tar", "czf", target, "/srv/data"])
     return "ok"
 
 
@@ -68,4 +68,4 @@ def restock():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True)
+    app.run(host="127.0.0.1")
